@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 import sys
 
-from .reports import generate_megaexport
+from .reports import generate_mainexport
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -15,17 +15,17 @@ def main() -> None:
     parser.add_argument(
         "--report",
         "-r",
-        choices=["megaexport"],
-        default="megaexport",
-        help="Which report to run (default: megaexport)",
+        choices=["mainexport"],
+        default="mainexport",
+        help="Which report to run (default: mainexport)",
     )
     parser.add_argument(
         "--output", "-o", type=Path, default=Path("genreport_output.txt"), help="Output file path"
     )
     args = parser.parse_args()
 
-    if args.report == "megaexport":
-        count = generate_megaexport(args.input, args.output)
+    if args.report == "mainexport":
+        count = generate_mainexport(args.input, args.output)
         print(f"Exported {count} individuals to {args.output}")
     else:
         print(f"Unknown report: {args.report}", file=sys.stderr)

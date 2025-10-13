@@ -6,7 +6,7 @@ from typing import TextIO
 
 from ..ged import GedDocument
 
-def generate_megaexport(in_path: Path, out_path: Path) -> int:
+def generate_mainexport(in_path: Path, out_path: Path) -> int:
     """
     Recreates the current output format from your legacy script:
     Header line + (field_id,desc,content) lines + relations + blank line, per individual.
