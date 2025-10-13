@@ -1,0 +1,17 @@
+PROJEKTSAMMANFATTNING
+Repo: https://github.com/villbagge/GenReport
+Kort målbild: Generate text/Markdown-style genealogy reports from GED files.
+Senaste release/tagg: v0.1.0 – initial scaffold (plus mainexport integration)
+Aktuell milstolpe: Finished modular refactor (parser, normalize, mainexport, CLI, batch runner)
+Arkitektur:
+  - src/genreport/normalize.py  – clean text, place, and date helpers
+  - src/genreport/ged.py        – GedDocument parser (core data model)
+  - src/genreport/reports/mainexport.py – current working report
+  - src/genreport/cli.py        – command-line interface
+  - run_genreport.bat           – one-click runner
+Publikt API: `genreport --report mainexport --input <ged> --output <file>`
+Öppna beslut:
+  - Add new report modules (one per list type)
+  - Optional: snapshot testing for stable outputs
+Kritiska tester: smoke_test.py
+Pågående ändringsbegäran: none (ready for new report features)
