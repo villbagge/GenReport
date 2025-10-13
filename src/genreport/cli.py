@@ -1,13 +1,13 @@
 import argparse
 from . import run
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         prog="genreport",
-        description="Generate Markdown genealogy reports from GED files."
+        description="Generate Markdown genealogy reports from GED files.",
     )
     parser.add_argument("--input", help="Path to GED file", required=False)
-    args = parser.parse_args()
+    _ = parser.parse_args()
     run()
 
 if __name__ == "__main__":
