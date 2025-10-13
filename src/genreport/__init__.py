@@ -1,5 +1,6 @@
+# src/genreport/__init__.py
 __all__ = ["run"]
 
 def run() -> None:
-    """Temporary placeholder – we’ll wire your real logic here soon."""
+    # Kept for backwards compatibility with the smoke test.
     print("GenReport: hello! (replace with real logic)")
