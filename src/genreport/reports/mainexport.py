@@ -5,7 +5,7 @@
 # Files: mainexport.py
 # Changes:
 #   Auto-stamp from post-commit
-#test2
+# desktop test
 # === GENREPORT HEADER END ===
 
 
