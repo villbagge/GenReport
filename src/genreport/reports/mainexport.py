@@ -1,94 +1,97 @@
 # === GENREPORT HEADER START ===
-# GenReport — untracked
-# Commit: test test tests ....
+# GenReport — v0.3.0
+# Commit: Add Swedish role labels and gender-aware parent output
 # Date: 2025-10-14
 # Files: mainexport.py
 # Changes:
-#   Auto-stamp from post-commit
+#   - OCCU -> Syssla:
+#   - SPOUSE -> Gift:
+#   - CHILD -> Barn:
+#   - PARENT -> Far:/Mor: depending on gender (warning if unknown)
 # === GENREPORT HEADER END ===
 
-
-#TEST 88
-
-# src/genreport/reports/mainexport.py
 from __future__ import annotations
 import re
 from pathlib import Path
+import sys
 
 from ..ged import GedDocument
 
 # compact multi-line values to one line
 _flatten_re = re.compile(r"\s*\n\s*")
 
-
 def _flatten(text: str) -> str:
     return _flatten_re.sub(" / ", (text or "").strip())
 
-
 def _is_email_line(fid: str, desc: str, content: str) -> bool:
-    """Filter out anything related to email."""
     f = (fid or "").upper()
     d = (desc or "").lower()
     c = (content or "")
-    if "EMAIL" in f:
-        return True
-    if "email" in d:
-        return True
-    if c.strip().upper() == "EMAIL":
-        return True
-    if "@" in c:
-        return True
-    return False
-
+    return (
+        "EMAIL" in f
+        or "email" in d
+        or c.strip().upper() == "EMAIL"
+        or "@" in c
+    )
 
 def _is_media_line(fid: str, desc: str) -> bool:
-    """Filter out media/attachments (OBJE/FILE/FORM and the like)."""
     f = (fid or "").upper()
     d = (desc or "").lower()
-    if "OBJE" in f or f.endswith(".FILE") or ".FILE" in f or f.endswith(".FORM") or ".FORM" in f:
+    if "OBJE" in f or ".FILE" in f or ".FORM" in f:
         return True
-    if "media" in d or "file" in d or "bild" in d:
+    if any(x in d for x in ("media", "file", "bild")):
         return True
     return False
 
-
-def _write_birth_line(f, date: str | None, place: str | None, note: str | None) -> None:
-    """Compose and write 'Född: <date> i <place>[, Not: <note>]'."""
-    d = (date or "").strip()
-    p = (place or "").strip()
-    n = (note or "").strip()
-
-    if not (d or p or n):
+def _write_birth_line(f, date, place, note):
+    if not (date or place or note):
         return
-
     line = "Född:"
-    if d:
-        line += f" {d}"
-    if p:
-        line += f" i {p}"
-    if n:
-        line += f", Not: {n}"
+    if date:
+        line += f" {date}"
+    if place:
+        line += f" i {place}"
+    if note:
+        line += f", Not: {note}"
     f.write(line + "\n")
 
-
-def _write_death_line(f, date: str | None, place: str | None, note: str | None) -> None:
-    """Compose and write 'Avliden: <date> i <place>[, Not: <note>]'."""
-    d = (date or "").strip()
-    p = (place or "").strip()
-    n = (note or "").strip()
-
-    if not (d or p or n):
+def _write_death_line(f, date, place, note):
+    if not (date or place or note):
         return
-
-    line = "Avliden:"
-    if d:
-        line += f" {d}"
-    if p:
-        line += f" i {p}"
-    if n:
-        line += f", Not: {n}"
+    line = "Död:"
+    if date:
+        line += f" {date}"
+    if place:
+        line += f" i {place}"
+    if note:
+        line += f", Not: {note}"
     f.write(line + "\n")
 
+def _map_relation_label(rid: str, line: str, doc: GedDocument) -> str:
+    """Translate GED relation tags to Swedish labels."""
+    rid_u = (rid or "").upper()
+    if rid_u == "SPOUSE":
+        return "Gift:"
+    if rid_u == "CHILD":
+        return "Barn:"
+    if rid_u == "PARENT":
+        # Try to determine gender of the related person
+        # Extract trailing ", <id>" (GEDCOM internal numeric ref)
+        match = re.search(r",\s*(\d+)\s*$", line)
+        if match:
+            rel_id = match.group(1)
+            gender = doc.get_gender_for_id(rel_id)
+            if gender == "M":
+                return "Far:"
+            elif gender == "F":
+                return "Mor:"
+            else:
+                print(f"⚠️  Warning: Unknown gender for parent ID {rel_id}", file=sys.stderr)
+                return "Förälder:"
+        else:
+            print(f"⚠️  Warning: Could not parse parent ID from line '{line}'", file=sys.stderr)
+            return "Förälder:"
+    return rid  # Default: keep as-is (technical tag)
 
 def generate_mainexport(in_path: Path, out_path: Path) -> int:
     """
@@ -96,23 +99,23 @@ def generate_mainexport(in_path: Path, out_path: Path) -> int:
       # Persongalleri
       ## <header>
       Född: ...
-      Avliden: ...
-      <other fields>
-      <relations>
-      <blank line>
+      Död: ...
+      <Syssla: ...>
+      <Gift: ...>
+      <Barn: ...>
+      <Far:/Mor: ...>
     """
     doc = GedDocument(in_path)
     count = 0
 
     with open(out_path, "w", encoding="utf-8") as f:
-        # H1 at the very top
         f.write("# Persongalleri\n\n")
 
         for xref, (s, e) in doc.iter_individuals():
             header, fields, relations = doc.collect_fields_for_individual(s, e)
             f.write(f"## {header}\n")
 
-            # --- Collect birth and death fields first ---
+            # --- Collect birth/death fields first ---
             birth_date = birth_place = birth_note = None
             death_date = death_place = death_note = None
 
@@ -131,46 +134,39 @@ def generate_mainexport(in_path: Path, out_path: Path) -> int:
                 elif fid_u == "DEAT.NOTE":
                     death_note = _flatten(content)
 
-            # --- Write merged birth and death lines ---
             _write_birth_line(f, birth_date, birth_place, birth_note)
             _write_death_line(f, death_date, death_place, death_note)
 
-            # --- Write remaining fields (filtered) ---
+            # --- Other fields (filtered, Swedish mappings) ---
             for fid, desc, content in fields:
                 content = _flatten(content)
                 if not content:
                     continue
                 fid_u = (fid or "").upper()
-
-                # Skip birth/death lines that we merged
-                if fid_u in (
-                    "BIRT.DATE",
-                    "BIRT.PLAC",
-                    "BIRT.NOTE",
-                    "DEAT.DATE",
-                    "DEAT.PLAC",
-                    "DEAT.NOTE",
-                    "DEAT._DESCRIPTION",
-                ):
+                if fid_u in ("BIRT.DATE","BIRT.PLAC","BIRT.NOTE","DEAT.DATE","DEAT.PLAC","DEAT.NOTE","DEAT._DESCRIPTION"):
+                    continue
+                if _is_email_line(fid, desc, content) or _is_media_line(fid, desc):
                     continue
 
-                if _is_email_line(fid, desc, content):
-                    continue
-                if _is_media_line(fid, desc):
-                    continue
+                # Replace OCCU with Syssla
+                if fid_u == "OCCU":
+                    f.write(f"Syssla: {content}\n")
+                else:
+                    f.write(f"{fid},{desc},{content}\n")
 
-                f.write(f"{fid},{desc},{content}\n")
-
-            # --- Relations (filtered for email/media) ---
+            # --- Relations (translated labels) ---
             for rid, rdesc, line in relations:
                 line = _flatten(line)
                 if not line:
                     continue
-                if _is_email_line(rid, rdesc, line):
+                if _is_email_line(rid, rdesc, line) or _is_media_line(rid, rdesc):
                     continue
-                if _is_media_line(rid, rdesc):
-                    continue
-                f.write(f"{rid},{rdesc},{line}\n")
+
+                label = _map_relation_label(rid, line, doc)
+                if label.endswith(":"):
+                    f.write(f"{label} {line}\n")
+                else:
+                    f.write(f"{label},{rdesc},{line}\n")
 
             f.write("\n")
             count += 1

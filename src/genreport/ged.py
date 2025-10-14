@@ -492,3 +492,35 @@ class GedDocument:
                     relations.append(("CHILD", "child", nl))
 
         return header, fields, relations
+
+    def get_gender_for_id(self, id_str: str) -> str:
+        """
+        Return 'M' (male), 'F' (female), or '' if unknown.
+        Expects a numeric or GEDCOM-style ID string.
+        """
+        # Defensive: strip @ signs or non-digits
+        if not id_str:
+            return ""
+        key = id_str.strip("@").strip()
+
+        # Try to locate individual by numeric key or cross-ref
+        entry = self.xref_index.get(key) if hasattr(self, "xref_index") else None
+        if not entry:
+            # Some parsers store xrefs as '@I001@' etc.
+            for k in getattr(self, "xref_index", {}):
+                if k.endswith(key):
+                    entry = self.xref_index[k]
+                    break
+
+        if not entry:
+            return ""
+
+        start, end = entry
+        for line in self.lines[start:end]:
+            parts = line.strip().split()
+            if len(parts) >= 2 and parts[1].upper() == "SEX":
+                sex = parts[2:3][0].strip().upper() if len(parts) >= 3 else ""
+                if sex in ("M", "F"):
+                    return sex
+        return ""
+
