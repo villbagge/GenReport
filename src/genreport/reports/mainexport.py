@@ -7,7 +7,7 @@
 #   Auto-stamp from post-commit
 # === GENREPORT HEADER END ===
 
-#TEST 99
+#TEST 88
 
 # src/genreport/reports/mainexport.py
 from __future__ import annotations
