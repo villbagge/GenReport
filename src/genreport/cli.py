@@ -1,3 +1,12 @@
+# === GENREPORT HEADER START ===
+# GenReport — untracked
+# Commit: (no commit message)
+# Date: 2025-10-14
+# Files: cli.py
+# Changes:
+#   Manual test of auto-stamp
+# === GENREPORT HEADER END ===
+
 # src/genreport/cli.py
 from __future__ import annotations
 import argparse

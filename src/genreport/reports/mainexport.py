@@ -1,3 +1,12 @@
+# === GENREPORT HEADER START ===
+# GenReport — untracked
+# Commit: (no commit message)
+# Date: 2025-10-14
+# Files: mainexport.py
+# Changes:
+#   Manual test of auto-stamp
+# === GENREPORT HEADER END ===
+
 # src/genreport/reports/mainexport.py
 from __future__ import annotations
 import re

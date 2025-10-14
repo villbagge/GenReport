@@ -1,3 +1,12 @@
+# === GENREPORT HEADER START ===
+# GenReport — untracked
+# Commit: (no commit message)
+# Date: 2025-10-14
+# Files: normalize.py
+# Changes:
+#   Manual test of auto-stamp
+# === GENREPORT HEADER END ===
+
 # src/genreport/normalize.py
 import re, html
 
