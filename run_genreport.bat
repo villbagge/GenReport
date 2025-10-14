@@ -22,7 +22,7 @@ REM === Choose input/output (allow passing them as arguments) ===
 set "INFILE=%~1"
 if "%INFILE%"=="" set "INFILE=%SCRIPT_DIR%input.ged"
 set "OUTFILE=%~2"
-if "%OUTFILE%"=="" set "OUTFILE=%SCRIPT_DIR%output.txt"
+if "%OUTFILE%"=="" set "OUTFILE=%SCRIPT_DIR%output.md"
 
 REM === Run the program ===
 python -m genreport.cli --input "%INFILE%" --output "%OUTFILE%"

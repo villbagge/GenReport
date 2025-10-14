@@ -3,4 +3,4 @@
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e .
-python -m genreport --input example.ged
+genreport --input path\to\file.ged --output report.md
