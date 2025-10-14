@@ -1,14 +1,12 @@
 # === GENREPORT HEADER START ===
-# GenReport — v0.3.0
-# Commit: Add Swedish role labels and gender-aware parent output
+# GenReport — untracked
+# Commit: Add Swedish role labels and gender-aware parent output in persongalleri.md
 # Date: 2025-10-14
 # Files: mainexport.py
 # Changes:
-#   - OCCU -> Syssla:
-#   - SPOUSE -> Gift:
-#   - CHILD -> Barn:
-#   - PARENT -> Far:/Mor: depending on gender (warning if unknown)
+#   Auto-stamp from post-commit
 # === GENREPORT HEADER END ===
+
 
 from __future__ import annotations
 import re

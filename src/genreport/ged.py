@@ -1,11 +1,12 @@
 # === GENREPORT HEADER START ===
 # GenReport — untracked
-# Commit: test test tests ....
+# Commit: Add Swedish role labels and gender-aware parent output in persongalleri.md
 # Date: 2025-10-14
 # Files: ged.py
 # Changes:
 #   Auto-stamp from post-commit
 # === GENREPORT HEADER END ===
+
 
 
 
