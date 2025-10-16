@@ -1,11 +1,12 @@
 # === GENREPORT HEADER START ===
 # GenReport — v0.3.0
-# Commit: Fix encoding and restore full GedDocument implementation
+# Commit: Merge OCCU and OCCU.PLAC into unified “Syssla” line
 # Date: 2025-10-16
 # Files: ged.py
 # Changes:
 #   Auto-stamp from post-commit
 # === GENREPORT HEADER END ===
+
 
 # src/genreport/ged.py
 from __future__ import annotations
@@ -216,9 +217,19 @@ def formatted_name_line(given, nick, sur, pre, suf, by, dy, ged_id) -> str:
     sym = re.sub(r"\s+", "", (pre or "") + (suf or ""))
     if sym:
         name += " " + sym
-    yrs = " ".join([y for y in [by, dy] if y])
+
+    # --- dashed years here (so downstream can preserve exact intent) ---
+    if by and dy:
+        years = f"{by}-{dy}"
+    elif by and not dy:
+        years = f"{by}-"
+    elif dy and not by:
+        years = f"-{dy}"
+    else:
+        years = ""
+
     num = ged_id
-    return f"{name} {yrs}, {num}".strip()
+    return f"{name} {years}, {num}".strip()
 
 def get_id_number(xref: str) -> str:
     m = re.match(r"^@I(\d+)@$", xref)

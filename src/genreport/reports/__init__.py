@@ -1,11 +1,12 @@
 # === GENREPORT HEADER START ===
 # GenReport — v0.3.0
-# Commit: Fix encoding and restore full GedDocument implementation
+# Commit: Merge OCCU and OCCU.PLAC into unified “Syssla” line
 # Date: 2025-10-16
 # Files: __init__.py
 # Changes:
 #   Auto-stamp from post-commit
 # === GENREPORT HEADER END ===
+
 
 
 
