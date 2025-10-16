@@ -1,17 +1,19 @@
+Continue GenReport development from version v0.3.0
+
 PROJEKTSAMMANFATTNING
 Repo: https://github.com/villbagge/GenReport
-Kort målbild: Generate text/Markdown-style genealogy reports from GED files.
-Senaste release/tagg: v0.1.0 – initial scaffold (plus mainexport integration)
-Aktuell milstolpe: Finished modular refactor (parser, normalize, mainexport, CLI, batch runner)
+Kort målbild: Generate text/Markdown-style genealogy reports (Persongalleri) from GED files.
+Senaste release/tagg: v0.3.0 – Add Swedish role labels and gender-aware parent output
 Arkitektur:
-  - src/genreport/normalize.py  – clean text, place, and date helpers
-  - src/genreport/ged.py        – GedDocument parser (core data model)
-  - src/genreport/reports/mainexport.py – current working report
-  - src/genreport/cli.py        – command-line interface
+  - src/genreport/normalize.py  – helpers for text/place/date cleaning
+  - src/genreport/ged.py        – GedDocument parser + get_gender_for_id()
+  - src/genreport/reports/mainexport.py – produces persongalleri.md
+  - src/genreport/cli.py        – CLI entry (uses --input and --outdir)
   - run_genreport.bat           – one-click runner
-Publikt API: `genreport --report mainexport --input <ged> --output <file>`
-Öppna beslut:
-  - Add new report modules (one per list type)
-  - Optional: snapshot testing for stable outputs
-Kritiska tester: smoke_test.py
-Pågående ändringsbegäran: none (ready for new report features)
+Publikt API: genreport --report mainexport --input <ged> --outdir <dir>
+Nuvarande fokus:
+  - Gender detection not yet working (all reported as unknown)
+  - Next step: troubleshoot get_gender_for_id() and verify “Far:”/“Mor:” output
+Kritiska tester: smoke_test.py (basic functional run)
+
+Please resume from this checkpoint and help fix gender detection in GedDocument.

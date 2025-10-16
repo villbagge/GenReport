@@ -1,3 +1,12 @@
+# === GENREPORT HEADER START ===
+# GenReport — v0.3.0
+# Commit: Fix encoding and restore full GedDocument implementation
+# Date: 2025-10-16
+# Files: ged.py
+# Changes:
+#   Auto-stamp from post-commit
+# === GENREPORT HEADER END ===
+
 # src/genreport/ged.py
 from __future__ import annotations
 import re
