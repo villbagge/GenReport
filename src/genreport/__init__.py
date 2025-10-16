@@ -1,11 +1,12 @@
 # === GENREPORT HEADER START ===
-# GenReport — v0.3.0
-# Commit: Merge OCCU and OCCU.PLAC into unified “Syssla” line
+# GenReport — v0.3.2
+# Commit: Refine output order and labeling in Persongalleri
 # Date: 2025-10-16
 # Files: __init__.py
 # Changes:
 #   Auto-stamp from post-commit
 # === GENREPORT HEADER END ===
+
 
 
 

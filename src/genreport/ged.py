@@ -1,12 +1,11 @@
 # === GENREPORT HEADER START ===
-# GenReport — v0.3.0
-# Commit: Merge OCCU and OCCU.PLAC into unified “Syssla” line
+# GenReport — v0.3.2
+# Commit: Refine output order and labeling in Persongalleri
 # Date: 2025-10-16
 # Files: ged.py
 # Changes:
 #   Auto-stamp from post-commit
 # === GENREPORT HEADER END ===
-
 
 # src/genreport/ged.py
 from __future__ import annotations
@@ -218,7 +217,7 @@ def formatted_name_line(given, nick, sur, pre, suf, by, dy, ged_id) -> str:
     if sym:
         name += " " + sym
 
-    # --- dashed years here (so downstream can preserve exact intent) ---
+    # dashed years (emit here so downstream preserves: YYYY-YYYY | YYYY- | -YYYY)
     if by and dy:
         years = f"{by}-{dy}"
     elif by and not dy:
@@ -344,9 +343,11 @@ class GedDocument:
         m = re.match(r"^\s*0\s+(@I[^@]*@)\s+INDI\b", lines[s])
         ged_xref = m.group(1)
         ged_num = get_id_number(ged_xref)
+
+        # header with dashed years handled here (YYYY-YYYY | YYYY- | -YYYY | "")
         header = formatted_name_line(given, nick, sur, pre, suf, by, dy, ged_num)
 
-        # collect fields
+        # collect fields (flat)
         fields: List[Field] = []
         i = s + 1
         while i < e:
@@ -356,8 +357,9 @@ class GedDocument:
                 i += 1
                 continue
 
-            # skip some admin tags at level 1
-            if tag in ("FAMC", "FAMS", "RIN", "_UID", "_UPD", "NAME", "SEX"):
+            # Skip admin/handled-at-end tags at level 1.
+            # NOTE is handled later as INDI.NOTE to avoid duplication.
+            if tag in ("FAMC", "FAMS", "RIN", "_UID", "_UPD", "NAME", "SEX", "NOTE"):
                 i += 1
                 continue
 
@@ -435,7 +437,7 @@ class GedDocument:
 
             i = max(j, i + 1)
 
-        # top-level individual NOTE
+        # top-level individual NOTE (added once here as INDI.NOTE)
         i = s + 1
         while i < e:
             lvl = level_of(lines[i])
