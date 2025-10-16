@@ -1,21 +1,8 @@
-# === GENREPORT HEADER START ===
-# GenReport — untracked
-# Commit: Add Swedish role labels and gender-aware parent output in persongalleri.md
-# Date: 2025-10-14
-# Files: ged.py
-# Changes:
-#   Auto-stamp from post-commit
-# === GENREPORT HEADER END ===
-
-
-
-
-
 # src/genreport/ged.py
 from __future__ import annotations
 import re
 from pathlib import Path
-from typing import Dict, Iterable, Iterator, List, Tuple, Optional
+from typing import Dict, Iterator, List, Tuple, Optional
 
 from .normalize import htmlish_to_text, clean_place, normalize_date, year_from
 
@@ -29,7 +16,6 @@ DESC = {
     "MILI":"military service","EVEN":"event","TITL":"title","ALIA":"alias","FACT":"fact","DSCR":"description",
     "RELI":"religion","NATI":"nationality","IMMI":"immigration","EMIG":"emigration","BAPM":"baptism","CHR":"christening",
     "CONF":"confirmation",
-    # Subfields:
     "DATE":"date","PLAC":"place","ADDR":"address","ADR1":"address line 1","ADR2":"address line 2","ADR3":"address line 3",
     "CITY":"city","STAE":"state","POST":"postal code","POSTAL_CODE":"postal code","CTRY":"country","TYPE":"type",
     "CAUS":"cause","NOTE":"note","TEXT":"text",
@@ -43,10 +29,79 @@ def tag_desc(field_id: str) -> str:
     sub = DESC.get(parts[1], parts[1].lower())
     return f"{base} {sub}"
 
-def read_ged_lines(path: Path) -> List[str]:
-    with open(path, "r", encoding="utf-8", errors="ignore") as f:
-        return [line.rstrip("\n\r") for line in f]
+# ---------- robust GED reader (UTF-8 preferred) with mojibake repair ----------
+def _mojibake_score(s: str) -> int:
+    return s.count("Ã") + s.count("Â") + s.count("â")
 
+def _latin1_to_utf8_fix(s: str) -> str:
+    before = _mojibake_score(s)
+    if before == 0:
+        return s
+    try:
+        fixed = s.encode("latin-1", errors="strict").decode("utf-8", errors="strict")
+        after = _mojibake_score(fixed)
+        if after < before:
+            return fixed
+    except Exception:
+        try:
+            fixed = s.encode("latin-1", errors="ignore").decode("utf-8", errors="ignore")
+            after = _mojibake_score(fixed)
+            if after < before:
+                return fixed
+        except Exception:
+            pass
+    return s
+
+def read_ged_lines(path: Path) -> List[str]:
+    """
+    Robustly read a GED file of unknown encoding.
+    Prefer UTF-8/UTF-16 (BOM detected). If strict UTF-8 fails, try UTF-8 with replacement and
+    keep it if replacements are tiny. Otherwise decode as Latin-1 and repair mojibake.
+    """
+    p = Path(path)
+    raw = p.read_bytes()
+
+    # UTF-16 BOM
+    if raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff"):
+        try:
+            text = raw.decode("utf-16")
+            return text.replace("\x00", "").splitlines()
+        except UnicodeDecodeError:
+            pass
+
+    # UTF-8 BOM
+    if raw.startswith(b"\xef\xbb\xbf"):
+        try:
+            text = raw.decode("utf-8-sig")
+            return text.splitlines()
+        except UnicodeDecodeError:
+            pass
+
+    # 1) strict UTF-8
+    try:
+        text = raw.decode("utf-8")
+        return text.replace("\x00", "").splitlines()
+    except UnicodeDecodeError:
+        pass
+
+    # 2) UTF-8 with replacement: keep if very few replacements (better than Latin-1 mojibake)
+    text_u8_rep = raw.decode("utf-8", errors="replace")
+    rep_count = text_u8_rep.count("\uFFFD")
+    if rep_count > 0 and rep_count / max(1, len(text_u8_rep)) < 0.0005:
+        return text_u8_rep.replace("\x00", "").splitlines()
+
+    # 3) Latin-1 path with mojibake repair
+    try:
+        text_l1 = raw.decode("latin-1")
+    except Exception:
+        text_l1 = raw.decode("latin-1", errors="ignore")
+
+    fixed = _latin1_to_utf8_fix(text_l1)
+    if _mojibake_score(fixed) > 0:
+        fixed = "\n".join(_latin1_to_utf8_fix(ln) for ln in fixed.splitlines())
+    return fixed.replace("\x00", "").splitlines()
+
+# ---------- low-level parsing helpers ----------
 def level_of(line: str) -> Optional[int]:
     m = re.match(r"^\s*(\d+)\s", line)
     return int(m.group(1)) if m else None
@@ -95,7 +150,7 @@ def collect_text_with_continuations(lines: List[str], start_i: int, base_level: 
         i += 1
     return "".join(texts), i
 
-def grab_subtree(lines: List[str], start: int, end: int, lvl: int) -> Iterator[Tuple[int, str, str, int]]:
+def grab_subtree(lines: List[str], start: int, end: int, lvl: int):
     i = start
     while i < end:
         line = lines[i]
@@ -163,6 +218,7 @@ def get_id_number(xref: str) -> str:
     d = re.sub(r"\D", "", xref)
     return d if d else xref.strip("@")
 
+# ---------- core document ----------
 class GedDocument:
     """Parsed GED data with indices for individuals and families."""
 
@@ -170,15 +226,23 @@ class GedDocument:
         self.path = Path(path)
         self.lines = read_ged_lines(self.path)
         self.indi_map, self.fam_map = self._build_indices(self.lines)
+
+        # numeric '123' -> '@I123@' fast map
+        self._indi_num_to_xref: Dict[str, str] = {}
+        for xref in self.indi_map.keys():
+            m = re.search(r"@I(\d+)@", xref)
+            if m:
+                self._indi_num_to_xref[m.group(1)] = xref
+
         self.note_index = self._index_notes(self.lines)
 
     # ---------- indices ----------
     @staticmethod
     def _build_indices(lines: List[str]) -> Tuple[Dict[str, LineRange], Dict[str, LineRange]]:
         indi_blocks = parse_blocks(lines, r"^\s*0\s+@I[^@]*@\s+INDI\b")
-        fam_blocks = parse_blocks(lines, r"^\s*0\s+@F[^@]*@\s+FAM\b")
+        fam_blocks  = parse_blocks(lines, r"^\s*0\s+@F[^@]*@\s+FAM\b")
         indi_map: Dict[str, LineRange] = {}
-        fam_map: Dict[str, LineRange] = {}
+        fam_map:  Dict[str, LineRange] = {}
         for s, e in indi_blocks:
             m = re.match(r"^\s*0\s+(@I[^@]*@)\s+INDI\b", lines[s])
             if m:
@@ -214,7 +278,6 @@ class GedDocument:
 
     # ---------- iteration ----------
     def iter_individuals(self) -> Iterator[Tuple[str, LineRange]]:
-        """Yield individuals in GED numeric order."""
         order: List[Tuple[int, str, int, int]] = []
         for xref, (s, e) in self.indi_map.items():
             n = re.sub(r"\D", "", xref)
@@ -228,7 +291,7 @@ class GedDocument:
         lines = self.lines
         given, nick, sur, pre, suf = person_name_parts(lines, s, e)
 
-        # gather birth/death to get years
+        # gather birth/death for header years
         birt_date = deat_date = ""
         i = s + 1
         while i < e:
@@ -258,13 +321,12 @@ class GedDocument:
 
         by, dy = year_from(birt_date), year_from(deat_date)
 
-        # id
         m = re.match(r"^\s*0\s+(@I[^@]*@)\s+INDI\b", lines[s])
         ged_xref = m.group(1)
         ged_num = get_id_number(ged_xref)
         header = formatted_name_line(given, nick, sur, pre, suf, by, dy, ged_num)
 
-        # collect all fields
+        # collect fields
         fields: List[Field] = []
         i = s + 1
         while i < e:
@@ -274,14 +336,12 @@ class GedDocument:
                 i += 1
                 continue
 
-            # skip pointers and meta tags (handled elsewhere)
+            # skip some admin tags at level 1
             if tag in ("FAMC", "FAMS", "RIN", "_UID", "_UPD", "NAME", "SEX"):
                 i += 1
                 continue
 
-            start = i
             content_lines: List[str] = []
-
             if val.strip():
                 if tag in ("PLAC", "ADDR"):
                     content_lines.append(clean_place(val.strip()))
@@ -291,6 +351,8 @@ class GedDocument:
             j = i + 1
             while j < e and (level_of(lines[j]) or 0) > lvl:
                 t2, v2 = tag_and_value(lines[j])
+                base_id = f"{tag}.{t2}"
+                desc = tag_desc(base_id)
 
                 if t2 in ("RIN", "_UID", "_UPD"):
                     j += 1
@@ -298,9 +360,6 @@ class GedDocument:
                 if tag == "NAME" and t2 in ("GIVN", "SURN"):
                     j += 1
                     continue
-
-                base_id = f"{tag}.{t2}"
-                desc = tag_desc(base_id)
 
                 if t2 == "PLAC":
                     extra, j2 = collect_text_with_continuations(lines, j, level_of(lines[j]))
@@ -332,23 +391,11 @@ class GedDocument:
                         if note:
                             fields.append((base_id, desc, note))
                     j = j2 - 1
-                elif t2 == "CAUS":
+                elif t2 in ("CAUS", "TYPE", "TEXT"):
                     extra, j2 = collect_text_with_continuations(lines, j, level_of(lines[j]))
-                    cause = ((v2 or "") + extra).strip()
-                    if cause:
-                        fields.append((base_id, desc, htmlish_to_text(cause)))
-                    j = j2 - 1
-                elif t2 == "TYPE":
-                    extra, j2 = collect_text_with_continuations(lines, j, level_of(lines[j]))
-                    tval = ((v2 or "") + extra).strip()
-                    if tval:
-                        fields.append((base_id, desc, htmlish_to_text(tval)))
-                    j = j2 - 1
-                elif t2 == "TEXT":
-                    extra, j2 = collect_text_with_continuations(lines, j, level_of(lines[j]))
-                    textv = ((v2 or "") + extra).strip()
-                    if textv:
-                        fields.append((base_id, desc, htmlish_to_text(textv)))
+                    val2 = ((v2 or "") + extra).strip()
+                    if val2:
+                        fields.append((base_id, desc, htmlish_to_text(val2)))
                     j = j2 - 1
                 else:
                     extra, j2 = collect_text_with_continuations(lines, j, level_of(lines[j]))
@@ -356,7 +403,6 @@ class GedDocument:
                     if val2:
                         fields.append((base_id, desc, htmlish_to_text(val2)))
                     j = j2 - 1
-
                 j += 1
 
             if content_lines:
@@ -369,7 +415,7 @@ class GedDocument:
 
             i = max(j, i + 1)
 
-        # top-level individual NOTE (if any)
+        # top-level individual NOTE
         i = s + 1
         while i < e:
             lvl = level_of(lines[i])
@@ -392,7 +438,6 @@ class GedDocument:
         famc: List[str] = []
         fams: List[str] = []
 
-        # collect family refs
         i = s + 1
         while i < e:
             lvl = level_of(lines[i])
@@ -447,8 +492,7 @@ class GedDocument:
             husb = wife = None
             j = fs + 1
             while j < fe:
-                lvl = level_of(lines[j])
-                tag, val = tag_and_value(lines[j])
+                lvl = level_of(lines[j]); tag, val = tag_and_value(lines[j])
                 if lvl == 1 and tag == "HUSB":
                     husb = (val or "").strip()
                 if lvl == 1 and tag == "WIFE":
@@ -472,8 +516,7 @@ class GedDocument:
             children: List[str] = []
             j = fs + 1
             while j < fe:
-                lvl = level_of(lines[j])
-                tag, val = tag_and_value(lines[j])
+                lvl = level_of(lines[j]); tag, val = tag_and_value(lines[j])
                 if lvl == 1 and tag == "HUSB":
                     husb = (val or "").strip()
                 elif lvl == 1 and tag == "WIFE":
@@ -494,34 +537,35 @@ class GedDocument:
 
         return header, fields, relations
 
+    # ---------- gender lookup ----------
     def get_gender_for_id(self, id_str: str) -> str:
         """
         Return 'M' (male), 'F' (female), or '' if unknown.
-        Expects a numeric or GEDCOM-style ID string.
+        Accepts '@I123@' or plain '123'.
         """
-        # Defensive: strip @ signs or non-digits
         if not id_str:
             return ""
-        key = id_str.strip("@").strip()
-
-        # Try to locate individual by numeric key or cross-ref
-        entry = self.xref_index.get(key) if hasattr(self, "xref_index") else None
-        if not entry:
-            # Some parsers store xrefs as '@I001@' etc.
-            for k in getattr(self, "xref_index", {}):
-                if k.endswith(key):
-                    entry = self.xref_index[k]
-                    break
-
-        if not entry:
+        # direct xref?
+        xref = id_str if id_str in self.indi_map else None
+        if xref is None:
+            digits = re.sub(r"\D", "", id_str)
+            if digits:
+                xref = self._indi_num_to_xref.get(digits)
+                if xref is None:
+                    cand = f"@I{digits}@"
+                    if cand in self.indi_map:
+                        xref = cand
+        if xref is None:
             return ""
-
-        start, end = entry
-        for line in self.lines[start:end]:
-            parts = line.strip().split()
-            if len(parts) >= 2 and parts[1].upper() == "SEX":
-                sex = parts[2:3][0].strip().upper() if len(parts) >= 3 else ""
-                if sex in ("M", "F"):
-                    return sex
+        s, e = self.indi_map[xref]
+        i = s + 1
+        while i < e:
+            line = self.lines[i].strip()
+            parts = line.split()
+            if len(parts) >= 3 and parts[0] == "1" and parts[1].upper() == "SEX":
+                sex = parts[2].upper()
+                return sex if sex in ("M", "F") else ""
+            i += 1
         return ""
 
+__all__ = ["GedDocument"]
