@@ -1,11 +1,12 @@
 # === GENREPORT HEADER START ===
-# GenReport — v0.3.3
-# Commit: Add exception handling for seven siblings (9001–9007) and silence @I88888888@ warnings
+# GenReport — v0.4.0
+# Commit: Add files for diff testing
 # Date: 2025-10-17
 # Files: ged.py
 # Changes:
 #   Auto-stamp from post-commit
 # === GENREPORT HEADER END ===
+
 
 
 # src/genreport/ged.py
