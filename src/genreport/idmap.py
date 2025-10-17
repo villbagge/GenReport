@@ -1,3 +1,12 @@
+# === GENREPORT HEADER START ===
+# GenReport — v0.3.3
+# Commit: Add exception handling for seven siblings (9001–9007) and silence @I88888888@ warnings
+# Date: 2025-10-17
+# Files: idmap.py
+# Changes:
+#   Auto-stamp from post-commit
+# === GENREPORT HEADER END ===
+
 # src/genreport/idmap.py
 from __future__ import annotations
 from typing import Dict, List, Tuple, Set, Optional

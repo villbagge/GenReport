@@ -1,11 +1,12 @@
 # === GENREPORT HEADER START ===
-# GenReport — v0.3.2
-# Commit: Refine output order and labeling in Persongalleri
-# Date: 2025-10-16
+# GenReport — v0.3.3
+# Commit: Add exception handling for seven siblings (9001–9007) and silence @I88888888@ warnings
+# Date: 2025-10-17
 # Files: __init__.py
 # Changes:
 #   Auto-stamp from post-commit
 # === GENREPORT HEADER END ===
+
 
 
 
