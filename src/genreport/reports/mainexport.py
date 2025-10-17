@@ -1,11 +1,12 @@
 # === GENREPORT HEADER START ===
 # GenReport — v0.4.0
-# Commit: Add files for diff testing
+# Commit: Add automated verify_diff tool with Notepad integration
 # Date: 2025-10-17
 # Files: mainexport.py
 # Changes:
 #   Auto-stamp from post-commit
 # === GENREPORT HEADER END ===
+
 
 
 # src/genreport/reports/mainexport.py
