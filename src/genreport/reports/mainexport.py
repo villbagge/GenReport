@@ -1,14 +1,3 @@
-# === GENREPORT HEADER START ===
-# GenReport — v0.4.0
-# Commit: Add automated verify_diff tool with Notepad integration
-# Date: 2025-10-17
-# Files: mainexport.py
-# Changes:
-#   Auto-stamp from post-commit
-# === GENREPORT HEADER END ===
-
-
-
 # src/genreport/reports/mainexport.py
 from __future__ import annotations
 
@@ -20,11 +9,10 @@ from ..ged import GedDocument
 from ..idmap import get_id_for_xref, get_id_for_numeric, _is_media_only_placeholder
 from ..relations import map_relation_label
 from ..log import warn
-from ..fieldfilters import should_exclude_field  # NEW: centralized field filtering
+from ..fieldfilters import process_field
 
 __all__ = ["generate_mainexport"]
 
-# compact multi-line values to one line
 _FLATTEN_RE: Final = re.compile(r"\s*\n\s*")
 
 
@@ -46,10 +34,6 @@ def _is_media_line(fid: str, desc: str) -> bool:
 
 
 def _write_line(f, text: str = "") -> None:
-    """
-    Write a single line, ensuring exactly one trailing newline.
-    Does not modify content except to add '\n' if missing.
-    """
     if text is None:
         text = ""
     if text.endswith("\n"):
@@ -91,7 +75,6 @@ _YEARS_DASHED_RE: Final = re.compile(r"\s((?:\d{4}-\d{4})|(?:\d{4}-)|(?:-\d{4}))
 def _split_name_years_id(line: str) -> tuple[str, str, str]:
     if not line:
         return "", line, ""
-
     m_id = _LAST_ID_RE.search(line)
     if not m_id:
         name = line.strip()
@@ -101,10 +84,8 @@ def _split_name_years_id(line: str) -> tuple[str, str, str]:
             years = m_y.group(1)
             name = name[: m_y.start()].rstrip()
         return "", name, years
-
     id_str = m_id.group(1)
     left = line[: m_id.start()].rstrip()
-
     m_y = _YEARS_DASHED_RE.search(left)
     years = ""
     if m_y:
@@ -112,7 +93,6 @@ def _split_name_years_id(line: str) -> tuple[str, str, str]:
         name = left[: m_y.start()].rstrip()
     else:
         name = left
-
     return id_str, name, years
 
 
@@ -125,27 +105,23 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
         _write_line(f, "")  # blank line
 
         for xref, (s, e) in doc.iter_individuals():
-            # Use IndividualView for header + birth/death/occupation/notes + relations
             view = doc.build_individual_view(s, e)
             header_from_view = view.header
 
             # Fetch fields using the legacy call (for miscellaneous field emission).
-            # We ignore its header and relations (now provided by the view).
             _, fields, _ = doc.collect_fields_for_individual(s, e)
 
-            # Header (unchanged behavior)
+            # Header
             _, name, years = _split_name_years_id(header_from_view)
 
             assigned = get_id_for_xref(idmap, xref)
             if assigned is None:
-                # Suppress warning for media-only placeholders (e.g., @I88888888@)
                 if not _is_media_only_placeholder(doc, xref):
                     warn(f"⚠️  Warning: Missing assigned ID for {xref}")
                 assigned = "?"
-
             _write_line(f, " ".join(p for p in ["##", f"#{assigned}", name, years] if p).strip())
 
-            # Birth/Death from IndividualView
+            # Birth/Death
             birth_date  = _flatten(view.birth_date)
             birth_place = _flatten(view.birth_place)
             birth_note  = _flatten(view.birth_note)
@@ -153,7 +129,7 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
             death_place = _flatten(view.death_place)
             death_note  = _flatten(view.death_note)
 
-            # Occupation + Notes from IndividualView
+            # Occupation + Notes
             occu_text_raw  = _flatten(view.occupation_text)
             occu_place_raw = _flatten(view.occupation_place)
             occu_date_raw  = _flatten(view.occupation_date)
@@ -168,18 +144,17 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
                     if n_flat:
                         indi_notes.append(n_flat)
 
-            # Write birth/death exactly as before
             _write_birth_line(f, birth_date, birth_place, birth_note)
             _write_death_line(f, death_date, death_place, death_note)
 
-            # Emit remaining fields (unchanged baseline filtering + NEW source rules)
+            # Emit remaining fields; defer SOUR.TEXT to the end
+            sour_text_blocks: list[str] = []
+
             for fid, desc, content in fields:
-                content = _flatten(content)
-                if not content:
-                    continue
+                content = content or ""
                 fid_u = (fid or "").upper()
 
-                # existing skips
+                # baseline skips
                 if fid_u in (
                     "BIRT.DATE", "BIRT.PLAC", "BIRT.NOTE", "BIRT._DESCRIPTION",
                     "DEAT.DATE", "DEAT.PLAC", "DEAT.NOTE", "DEAT._DESCRIPTION", "DEAT.AGE",
@@ -187,18 +162,31 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
                     "INDI.NOTE",
                 ):
                     continue
+
+                # media/email skip (unchanged)
                 if _is_email_line(fid, desc, content) or _is_media_line(fid, desc):
                     continue
 
-                # NEW: centralized field filters (handles SOUR.* rules)
-                if should_exclude_field(fid_u, desc, content):
+                # Decide & transform
+                exclude, transformed, preserve_newlines = process_field(fid_u, desc, content)
+                if exclude:
                     continue
 
-                _write_line(f, f"{fid},{desc},{content}")
+                if fid_u == "SOUR.TEXT":
+                    out_content = transformed if preserve_newlines else _flatten(transformed)
+                    if out_content.strip():
+                        sour_text_blocks.append(out_content.strip("\n"))
+                    continue
 
-            # Relations from IndividualView (order preserved) via centralized label mapping
+                out_content = transformed if preserve_newlines else _flatten(transformed)
+                if not out_content:
+                    continue
+
+                _write_line(f, f"{fid},{desc},{out_content}")
+
+            # Relations (unchanged)
             for rid, rdesc, line in (view.relations_all or []):
-                line = _flatten(line)
+                line = _flatten(line or "")
                 if not line:
                     continue
                 if _is_email_line(rid, rdesc, line) or _is_media_line(rid, rdesc):
@@ -210,7 +198,6 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
                 if rel_id_str:
                     assigned_rel = get_id_for_numeric(doc, idmap, rel_id_str)
 
-                # Also suppress warnings for placeholder relations
                 if rel_id_str and assigned_rel is None:
                     rx = doc._indi_num_to_xref.get(rel_id_str) or f"@I{rel_id_str}@"
                     if rx in doc.indi_map and not _is_media_only_placeholder(doc, rx):
@@ -228,6 +215,7 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
                 else:
                     _write_line(f, f"{label},{rdesc},{line}")
 
+            # Syssla and Person notes (unchanged)
             if occu_text or occu_place or occu_date:
                 parts = ["Syssla:"]
                 if occu_date:
@@ -243,7 +231,18 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
             if indi_notes:
                 _write_line(f, f"Not: {' / '.join(indi_notes)}")
 
-            _write_line(f, "")  # blank line
+            # --- Källor (render SOUR.TEXT with rulers) ---
+            if sour_text_blocks:
+                _write_line(f, "### Källor:")
+                for block in sour_text_blocks:
+                    _write_line(f, "---")
+                    # write cleaned multi-line content as-is
+                    if block.endswith("\n"):
+                        f.write(block)
+                    else:
+                        f.write(block + "\n")
+
+            _write_line(f, "")  # blank line between people
             count += 1
 
     return count
