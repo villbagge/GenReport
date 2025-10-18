@@ -17,6 +17,7 @@ import sys
 
 from ..ged import GedDocument
 from ..idmap import get_id_for_xref, get_id_for_numeric, _is_media_only_placeholder
+from ..relations import map_relation_label  # NEW central helper
 
 # compact multi-line values to one line
 _flatten_re = re.compile(r"\s*\n\s*")
@@ -110,30 +111,6 @@ def _split_name_years_id(line: str) -> tuple[str, str, str]:
     return id_str, name, years
 
 
-def _map_relation_label(rid: str, line: str, doc: GedDocument) -> str:
-    rid_u = (rid or "").upper()
-    if rid_u == "SPOUSE":
-        return "Vigd:"
-    if rid_u == "CHILD":
-        return "Barn:"
-    if rid_u == "PARENT":
-        m = _last_id_re.search(line)
-        if m:
-            rel_id = m.group(1)
-            gender = doc.get_gender_for_id(rel_id)
-            if gender == "M":
-                return "Far:"
-            elif gender == "F":
-                return "Mor:"
-            else:
-                print(f"⚠️  Warning: Unknown gender for parent ID {rel_id}", file=sys.stderr)
-                return "Förälder:"
-        else:
-            print(f"⚠️  Warning: Could not parse parent ID from line '{line}'", file=sys.stderr)
-            return "Förälder:"
-    return rid
-
-
 def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) -> int:
     doc = GedDocument(in_path)
     count = 0
@@ -143,7 +120,7 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
         _write_line(f, "")  # blank line
 
         for xref, (s, e) in doc.iter_individuals():
-            # --- Use IndividualView for header + birth/death/occupation/notes + relations ---
+            # Use IndividualView for header + birth/death/occupation/notes + relations
             view = doc.build_individual_view(s, e)
             header_from_view = view.header
 
@@ -162,7 +139,7 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
 
             _write_line(f, " ".join(p for p in ["##", f"#{assigned}", name, years] if p).strip())
 
-            # --- Birth/Death from IndividualView ---
+            # Birth/Death from IndividualView
             birth_date  = _flatten(view.birth_date)
             birth_place = _flatten(view.birth_place)
             birth_note  = _flatten(view.birth_note)
@@ -170,7 +147,7 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
             death_place = _flatten(view.death_place)
             death_note  = _flatten(view.death_note)
 
-            # --- Occupation + Notes from IndividualView ---
+            # Occupation + Notes from IndividualView
             occu_text_raw  = _flatten(view.occupation_text)
             occu_place_raw = _flatten(view.occupation_place)
             occu_date_raw  = _flatten(view.occupation_date)
@@ -189,7 +166,7 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
             _write_birth_line(f, birth_date, birth_place, birth_note)
             _write_death_line(f, death_date, death_place, death_note)
 
-            # Emit remaining fields (unchanged filtering; skip OCCU/INDI.NOTE et al. as before)
+            # Emit remaining fields (unchanged filtering)
             for fid, desc, content in fields:
                 content = _flatten(content)
                 if not content:
@@ -208,7 +185,7 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
 
                 _write_line(f, f"{fid},{desc},{content}")
 
-            # --- Relations NOW from IndividualView (order preserved) ---
+            # Relations now from IndividualView (order preserved) via centralized label mapping
             for rid, rdesc, line in (view.relations_all or []):
                 line = _flatten(line)
                 if not line:
@@ -216,7 +193,7 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
                 if _is_email_line(rid, rdesc, line) or _is_media_line(rid, rdesc):
                     continue
 
-                label = _map_relation_label(rid, line, doc)
+                label = map_relation_label(doc, rid, line)  # centralized (same behavior)
                 rel_id_str, rel_name, rel_years = _split_name_years_id(line)
                 assigned_rel = None
                 if rel_id_str:
