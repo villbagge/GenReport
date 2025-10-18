@@ -20,6 +20,7 @@ from ..ged import GedDocument
 from ..idmap import get_id_for_xref, get_id_for_numeric, _is_media_only_placeholder
 from ..relations import map_relation_label
 from ..log import warn
+from ..fieldfilters import should_exclude_field  # NEW: centralized field filtering
 
 __all__ = ["generate_mainexport"]
 
@@ -171,13 +172,14 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
             _write_birth_line(f, birth_date, birth_place, birth_note)
             _write_death_line(f, death_date, death_place, death_note)
 
-            # Emit remaining fields (unchanged filtering)
+            # Emit remaining fields (unchanged baseline filtering + NEW source rules)
             for fid, desc, content in fields:
                 content = _flatten(content)
                 if not content:
                     continue
                 fid_u = (fid or "").upper()
 
+                # existing skips
                 if fid_u in (
                     "BIRT.DATE", "BIRT.PLAC", "BIRT.NOTE", "BIRT._DESCRIPTION",
                     "DEAT.DATE", "DEAT.PLAC", "DEAT.NOTE", "DEAT._DESCRIPTION", "DEAT.AGE",
@@ -186,6 +188,10 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
                 ):
                     continue
                 if _is_email_line(fid, desc, content) or _is_media_line(fid, desc):
+                    continue
+
+                # NEW: centralized field filters (handles SOUR.* rules)
+                if should_exclude_field(fid_u, desc, content):
                     continue
 
                 _write_line(f, f"{fid},{desc},{content}")
