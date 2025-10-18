@@ -143,9 +143,15 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
         _write_line(f, "")  # blank line
 
         for xref, (s, e) in doc.iter_individuals():
-            header, fields, relations = doc.collect_fields_for_individual(s, e)
+            # --- Use IndividualView for header + birth/death/occupation/notes + relations ---
+            view = doc.build_individual_view(s, e)
+            header_from_view = view.header
 
-            _, name, years = _split_name_years_id(header)
+            # We still fetch fields using the legacy call (for miscellaneous field emission).
+            _legacy_header, fields, _legacy_relations = doc.collect_fields_for_individual(s, e)
+
+            # Header (unchanged behavior)
+            _, name, years = _split_name_years_id(header_from_view)
 
             assigned = get_id_for_xref(idmap, xref)
             if assigned is None:
@@ -156,40 +162,34 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
 
             _write_line(f, " ".join(p for p in ["##", f"#{assigned}", name, years] if p).strip())
 
-            birth_date = birth_place = birth_note = None
-            death_date = death_place = death_note = None
-            occu_text = occu_place = occu_date = None
-            indi_notes: list[str] = []
+            # --- Birth/Death from IndividualView ---
+            birth_date  = _flatten(view.birth_date)
+            birth_place = _flatten(view.birth_place)
+            birth_note  = _flatten(view.birth_note)
+            death_date  = _flatten(view.death_date)
+            death_place = _flatten(view.death_place)
+            death_note  = _flatten(view.death_note)
 
-            for fid, desc, content in fields:
-                fid_u = (fid or "").upper()
-                val = _flatten(content)
+            # --- Occupation + Notes from IndividualView ---
+            occu_text_raw  = _flatten(view.occupation_text)
+            occu_place_raw = _flatten(view.occupation_place)
+            occu_date_raw  = _flatten(view.occupation_date)
+            occu_text  = occu_text_raw or None
+            occu_place = occu_place_raw or None
+            occu_date  = occu_date_raw or None
 
-                if fid_u == "BIRT.DATE":
-                    birth_date = val
-                elif fid_u == "BIRT.PLAC":
-                    birth_place = val
-                elif fid_u == "BIRT.NOTE":
-                    birth_note = val
-                elif fid_u == "DEAT.DATE":
-                    death_date = val
-                elif fid_u == "DEAT.PLAC":
-                    death_place = val
-                elif fid_u == "DEAT.NOTE":
-                    death_note = val
-                elif fid_u == "OCCU":
-                    occu_text = val
-                elif fid_u == "OCCU.PLAC":
-                    occu_place = val
-                elif fid_u == "OCCU.DATE":
-                    occu_date = val
-                elif fid_u == "INDI.NOTE":
-                    if val:
-                        indi_notes.append(val)
+            indi_notes = []
+            if view.notes:
+                for n in view.notes:
+                    n_flat = _flatten(n)
+                    if n_flat:
+                        indi_notes.append(n_flat)
 
+            # Write birth/death exactly as before
             _write_birth_line(f, birth_date, birth_place, birth_note)
             _write_death_line(f, death_date, death_place, death_note)
 
+            # Emit remaining fields (unchanged filtering; skip OCCU/INDI.NOTE et al. as before)
             for fid, desc, content in fields:
                 content = _flatten(content)
                 if not content:
@@ -208,7 +208,8 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
 
                 _write_line(f, f"{fid},{desc},{content}")
 
-            for rid, rdesc, line in relations:
+            # --- Relations NOW from IndividualView (order preserved) ---
+            for rid, rdesc, line in (view.relations_all or []):
                 line = _flatten(line)
                 if not line:
                     continue

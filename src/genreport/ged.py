@@ -5,6 +5,7 @@
 # Files: ged.py
 # Changes:
 #   Auto-stamp from post-commit
+#   Add IndividualView façade (now includes relations_all)
 # === GENREPORT HEADER END ===
 
 
@@ -15,6 +16,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 from typing import Dict, Iterator, List, Tuple, Optional
+from dataclasses import dataclass
 
 from .normalize import htmlish_to_text, clean_place, normalize_date, year_from
 
@@ -592,5 +594,141 @@ class GedDocument:
                 return sex if sex in ("M", "F") else ""
             i += 1
         return ""
+
+    # ---------- IndividualView façade ----------
+    @dataclass(frozen=True)
+    class IndividualView:
+        xref: str
+        header: str                 # same header string as collect_fields_for_individual()[0]
+        given: str
+        nickname: str
+        surname: str
+        prefix: str
+        suffix: str
+        birth_date: str
+        birth_place: str
+        birth_note: str
+        death_date: str
+        death_place: str
+        death_note: str
+        occupation_text: str
+        occupation_place: str
+        occupation_date: str
+        notes: List[str]
+        relations_parents: List[str]   # each is the existing "name years, num" line
+        relations_spouses: List[str]
+        relations_children: List[str]
+        relations_all: List[Relation]  # NEW: exact order as produced today
+        gender: str
+
+    _re_last_id = re.compile(r",\s*(\d+)\s*$")
+    _re_years_tail = re.compile(r"\s((?:\d{4}-\d{4})|(?:\d{4}-)|(?:-\d{4}))$")
+
+    @staticmethod
+    def _split_name_years_id_from_line(line: str) -> Tuple[str, str, str]:
+        """Return (id_str, name_without_years, dashed_years)."""
+        if not line:
+            return "", line, ""
+        m_id = GedDocument._re_last_id.search(line)
+        if not m_id:
+            name = line.strip()
+            m_y = GedDocument._re_years_tail.search(name)
+            years = ""
+            if m_y:
+                years = m_y.group(1)
+                name = name[: m_y.start()].rstrip()
+            return "", name, years
+        id_str = m_id.group(1)
+        left = line[: m_id.start()].rstrip()
+        m_y = GedDocument._re_years_tail.search(left)
+        years = ""
+        if m_y:
+            years = m_y.group(1)
+            name = left[: m_y.start()].rstrip()
+        else:
+            name = left
+        return id_str, name, years
+
+    def build_individual_view(self, s: int, e: int) -> "GedDocument.IndividualView":
+        """
+        Construct an IndividualView for the individual at [s, e).
+        Purely additive: uses existing parsing; does not change output elsewhere.
+        """
+        lines = self.lines
+        # Header + flat field/relations using existing logic
+        header, fields, relations = self.collect_fields_for_individual(s, e)
+
+        # Name parts (from current subtree logic)
+        given, nick, sur, pre, suf = person_name_parts(lines, s, e)
+
+        # Birth/Death/Occupation/Notes from fields
+        b_date = b_place = b_note = ""
+        d_date = d_place = d_note = ""
+        o_text = o_place = o_date = ""
+        notes: List[str] = []
+        for fid, _desc, content in fields:
+            fid_u = (fid or "").upper()
+            if fid_u == "BIRT.DATE":
+                b_date = content
+            elif fid_u == "BIRT.PLAC":
+                b_place = content
+            elif fid_u == "BIRT.NOTE":
+                b_note = content
+            elif fid_u == "DEAT.DATE":
+                d_date = content
+            elif fid_u == "DEAT.PLAC":
+                d_place = content
+            elif fid_u == "DEAT.NOTE":
+                d_note = content
+            elif fid_u == "OCCU":
+                o_text = content
+            elif fid_u == "OCCU.PLAC":
+                o_place = content
+            elif fid_u == "OCCU.DATE":
+                o_date = content
+            elif fid_u == "INDI.NOTE":
+                if content:
+                    notes.append(content)
+
+        # Relations grouped
+        parents: List[str] = []
+        spouses: List[str] = []
+        children: List[str] = []
+        for rid, _rdesc, line in relations:
+            ru = (rid or "").upper()
+            if ru == "PARENT":
+                parents.append(line)
+            elif ru == "SPOUSE":
+                spouses.append(line)
+            elif ru == "CHILD":
+                children.append(line)
+
+        # xref and gender
+        m = re.match(r"^\s*0\s+(@I[^@]*@)\s+INDI\b", lines[s])
+        xref = m.group(1) if m else ""
+        gender = self.get_gender_for_id(xref)
+
+        return GedDocument.IndividualView(
+            xref=xref,
+            header=header,
+            given=given, nickname=nick, surname=sur, prefix=pre, suffix=suf,
+            birth_date=b_date, birth_place=b_place, birth_note=b_note,
+            death_date=d_date, death_place=d_place, death_note=d_note,
+            occupation_text=o_text, occupation_place=o_place, occupation_date=o_date,
+            notes=notes,
+            relations_parents=parents, relations_spouses=spouses, relations_children=children,
+            relations_all=list(relations),
+            gender=gender,
+        )
+
+    def individual_view_for_xref(self, xref: str) -> "GedDocument.IndividualView":
+        """
+        Convenience accessor: build an IndividualView by xref.
+        """
+        rng = self.indi_map.get(xref)
+        if not rng:
+            raise KeyError(f"Unknown xref: {xref}")
+        s, e = rng
+        return self.build_individual_view(s, e)
 
 __all__ = ["GedDocument"]
