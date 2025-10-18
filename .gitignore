@@ -1,5 +1,6 @@
 *.ged
 *.md
+last_diff.txt
 !SPECIFICATION.md
 releases/
 

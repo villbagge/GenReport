@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import re
-import sys
 from .ged import GedDocument
+from .log import warn
 
 # Match a trailing ", <digits>" at the end of the line to extract GED numeric id
 _last_id_re = re.compile(r",\s*(\d+)\s*$")
@@ -12,9 +12,8 @@ _last_id_re = re.compile(r",\s*(\d+)\s*$")
 def map_relation_label(doc: GedDocument, rid: str, line: str) -> str:
     """
     Map internal relation codes to presentation labels, using the related
-    person's gender for parents. Emits the same warnings to stderr as before.
-    Behavior is intentionally identical to the inlined logic we used to keep
-    in mainexport.py.
+    person's gender for parents. Emits the same warnings to stderr as before
+    (now via log.warn, identical text).
     """
     rid_u = (rid or "").upper()
     if rid_u == "SPOUSE":
@@ -31,9 +30,9 @@ def map_relation_label(doc: GedDocument, rid: str, line: str) -> str:
             elif gender == "F":
                 return "Mor:"
             else:
-                print(f"⚠️  Warning: Unknown gender for parent ID {rel_id}", file=sys.stderr)
+                warn(f"⚠️  Warning: Unknown gender for parent ID {rel_id}")
                 return "Förälder:"
         else:
-            print(f"⚠️  Warning: Could not parse parent ID from line '{line}'", file=sys.stderr)
+            warn(f"⚠️  Warning: Could not parse parent ID from line '{line}'")
             return "Förälder:"
     return rid
