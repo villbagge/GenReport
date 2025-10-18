@@ -11,20 +11,24 @@
 
 # src/genreport/reports/mainexport.py
 from __future__ import annotations
+
 import re
 from pathlib import Path
-import sys
+from typing import Final
 
 from ..ged import GedDocument
 from ..idmap import get_id_for_xref, get_id_for_numeric, _is_media_only_placeholder
-from ..relations import map_relation_label  # NEW central helper
+from ..relations import map_relation_label
+from ..log import warn
+
+__all__ = ["generate_mainexport"]
 
 # compact multi-line values to one line
-_flatten_re = re.compile(r"\s*\n\s*")
+_FLATTEN_RE: Final = re.compile(r"\s*\n\s*")
 
 
 def _flatten(text: str) -> str:
-    return _flatten_re.sub(" / ", (text or "").strip())
+    return _FLATTEN_RE.sub(" / ", (text or "").strip())
 
 
 def _is_email_line(fid: str, desc: str, content: str) -> bool:
@@ -79,18 +83,18 @@ def _write_death_line(f, date, place, note):
     _write_line(f, line)
 
 
-_last_id_re = re.compile(r",\s*(\d+)\s*$")
-_years_dashed_re = re.compile(r"\s((?:\d{4}-\d{4})|(?:\d{4}-)|(?:-\d{4}))$")
+_LAST_ID_RE: Final = re.compile(r",\s*(\d+)\s*$")
+_YEARS_DASHED_RE: Final = re.compile(r"\s((?:\d{4}-\d{4})|(?:\d{4}-)|(?:-\d{4}))$")
 
 
 def _split_name_years_id(line: str) -> tuple[str, str, str]:
     if not line:
         return "", line, ""
 
-    m_id = _last_id_re.search(line)
+    m_id = _LAST_ID_RE.search(line)
     if not m_id:
         name = line.strip()
-        m_y = _years_dashed_re.search(name)
+        m_y = _YEARS_DASHED_RE.search(name)
         years = ""
         if m_y:
             years = m_y.group(1)
@@ -100,7 +104,7 @@ def _split_name_years_id(line: str) -> tuple[str, str, str]:
     id_str = m_id.group(1)
     left = line[: m_id.start()].rstrip()
 
-    m_y = _years_dashed_re.search(left)
+    m_y = _YEARS_DASHED_RE.search(left)
     years = ""
     if m_y:
         years = m_y.group(1)
@@ -124,8 +128,9 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
             view = doc.build_individual_view(s, e)
             header_from_view = view.header
 
-            # We still fetch fields using the legacy call (for miscellaneous field emission).
-            _legacy_header, fields, _legacy_relations = doc.collect_fields_for_individual(s, e)
+            # Fetch fields using the legacy call (for miscellaneous field emission).
+            # We ignore its header and relations (now provided by the view).
+            _, fields, _ = doc.collect_fields_for_individual(s, e)
 
             # Header (unchanged behavior)
             _, name, years = _split_name_years_id(header_from_view)
@@ -134,7 +139,7 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
             if assigned is None:
                 # Suppress warning for media-only placeholders (e.g., @I88888888@)
                 if not _is_media_only_placeholder(doc, xref):
-                    print(f"⚠️  Warning: Missing assigned ID for {xref}", file=sys.stderr)
+                    warn(f"⚠️  Warning: Missing assigned ID for {xref}")
                 assigned = "?"
 
             _write_line(f, " ".join(p for p in ["##", f"#{assigned}", name, years] if p).strip())
@@ -185,7 +190,7 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
 
                 _write_line(f, f"{fid},{desc},{content}")
 
-            # Relations now from IndividualView (order preserved) via centralized label mapping
+            # Relations from IndividualView (order preserved) via centralized label mapping
             for rid, rdesc, line in (view.relations_all or []):
                 line = _flatten(line)
                 if not line:
@@ -193,7 +198,7 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
                 if _is_email_line(rid, rdesc, line) or _is_media_line(rid, rdesc):
                     continue
 
-                label = map_relation_label(doc, rid, line)  # centralized (same behavior)
+                label = map_relation_label(doc, rid, line)
                 rel_id_str, rel_name, rel_years = _split_name_years_id(line)
                 assigned_rel = None
                 if rel_id_str:
@@ -203,7 +208,7 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
                 if rel_id_str and assigned_rel is None:
                     rx = doc._indi_num_to_xref.get(rel_id_str) or f"@I{rel_id_str}@"
                     if rx in doc.indi_map and not _is_media_only_placeholder(doc, rx):
-                        print(f"⚠️  Warning: Missing assigned ID for {rx}", file=sys.stderr)
+                        warn(f"⚠️  Warning: Missing assigned ID for {rx}")
 
                 if label.endswith(":"):
                     bits = [label]
