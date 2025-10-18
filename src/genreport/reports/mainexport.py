@@ -39,6 +39,19 @@ def _is_media_line(fid: str, desc: str) -> bool:
     return ("OBJE" in f or ".FILE" in f or ".FORM" in f) or any(x in d for x in ("media", "file", "bild"))
 
 
+def _write_line(f, text: str = "") -> None:
+    """
+    Write a single line, ensuring exactly one trailing newline.
+    Does not modify content except to add '\n' if missing.
+    """
+    if text is None:
+        text = ""
+    if text.endswith("\n"):
+        f.write(text)
+    else:
+        f.write(text + "\n")
+
+
 def _write_birth_line(f, date, place, note):
     if not (date or place or note):
         return
@@ -49,7 +62,7 @@ def _write_birth_line(f, date, place, note):
         line += f" i {place}"
     if note:
         line += f", Not: {note}"
-    f.write(line + "\n")
+    _write_line(f, line)
 
 
 def _write_death_line(f, date, place, note):
@@ -62,7 +75,7 @@ def _write_death_line(f, date, place, note):
         line += f" i {place}"
     if note:
         line += f", Not: {note}"
-    f.write(line + "\n")
+    _write_line(f, line)
 
 
 _last_id_re = re.compile(r",\s*(\d+)\s*$")
@@ -126,7 +139,8 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
     count = 0
 
     with open(out_path, "w", encoding="utf-8") as f:
-        f.write("# Persongalleri\n\n")
+        _write_line(f, "# Persongalleri")
+        _write_line(f, "")  # blank line
 
         for xref, (s, e) in doc.iter_individuals():
             header, fields, relations = doc.collect_fields_for_individual(s, e)
@@ -140,7 +154,7 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
                     print(f"⚠️  Warning: Missing assigned ID for {xref}", file=sys.stderr)
                 assigned = "?"
 
-            f.write(" ".join(p for p in ["##", f"#{assigned}", name, years] if p).strip() + "\n")
+            _write_line(f, " ".join(p for p in ["##", f"#{assigned}", name, years] if p).strip())
 
             birth_date = birth_place = birth_note = None
             death_date = death_place = death_note = None
@@ -192,7 +206,7 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
                 if _is_email_line(fid, desc, content) or _is_media_line(fid, desc):
                     continue
 
-                f.write(f"{fid},{desc},{content}\n")
+                _write_line(f, f"{fid},{desc},{content}")
 
             for rid, rdesc, line in relations:
                 line = _flatten(line)
@@ -221,9 +235,9 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
                         bits.append(rel_name)
                     if rel_years:
                         bits.append(rel_years)
-                    f.write(" ".join(bits).rstrip() + "\n")
+                    _write_line(f, " ".join(bits).rstrip())
                 else:
-                    f.write(f"{label},{rdesc},{line}\n")
+                    _write_line(f, f"{label},{rdesc},{line}")
 
             if occu_text or occu_place or occu_date:
                 parts = ["Syssla:"]
@@ -235,12 +249,12 @@ def generate_mainexport(in_path: Path, out_path: Path, idmap: dict[str, int]) ->
                     parts.append(occu_text)
                 if occu_place:
                     parts.append(f"i {occu_place}")
-                f.write(" ".join(parts) + "\n")
+                _write_line(f, " ".join(parts))
 
             if indi_notes:
-                f.write(f"Not: {' / '.join(indi_notes)}\n")
+                _write_line(f, f"Not: {' / '.join(indi_notes)}")
 
-            f.write("\n")
+            _write_line(f, "")  # blank line
             count += 1
 
     return count
