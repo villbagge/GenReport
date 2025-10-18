@@ -1,5 +1,6 @@
 *.ged
 *.md
+!SPECIFICATION.md
 releases/
 
 # Byte-compiled / optimized / DLL files
