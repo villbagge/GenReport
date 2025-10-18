@@ -1,13 +1,14 @@
-# src/genreport/relations.py
 from __future__ import annotations
 
 import re
+from typing import Final
 from .ged import GedDocument
 from .log import warn
 
-# Match a trailing ", <digits>" at the end of the line to extract GED numeric id
-_last_id_re = re.compile(r",\s*(\d+)\s*$")
+__all__ = ["map_relation_label"]
 
+# Match a trailing ", <digits>" at the end of the line to extract GED numeric id
+_last_id_re: Final = re.compile(r",\s*(\d+)\s*$")
 
 def map_relation_label(doc: GedDocument, rid: str, line: str) -> str:
     """
